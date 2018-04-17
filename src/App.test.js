@@ -20,11 +20,27 @@ const isDebugging = () => {
 };
 
 let browser, page;
+let logs = [];
+let erros = [];
 
 beforeAll(async () => {
   browser = await puppeteer.launch(isDebugging());
   page = await browser.newPage();
-  await page.goto('http://localhost:3000/');
+
+  page.on('console', c => logs.push(c.text))
+  page.on('pageerror', e => erros.push(e.text))
+
+  // about the API request to test the failure
+  await page.setRequestInterception(true)
+  page.on('request', interceptedRequest => {
+    if (interceptedRequest.url().includes('swapi')) {
+      interceptedRequest.abort()
+    } else {
+      interceptedRequest.continue()
+    }
+  })
+
+  await page.goto('http://localhost:3001/');
   page.setViewport({ width: 500, height: 2400 });
 });
 
@@ -48,7 +64,7 @@ describe('on page load', () => {
     async () => {
       const page2 = await browser.newPage();
       await page2.emulate(iPhone);
-      await page2.goto('http://localhost:3000/')
+      await page2.goto('http://localhost:3001/')
 
       const html = await page2.$eval('.App-title', e => e.innerHTML);
       expect(html).toBe('Welcome to React');
@@ -56,4 +72,23 @@ describe('on page load', () => {
     16000
   );
   
+  test('does not have console.logs', async () => {
+    if(logs.length > 0) {
+      await page.screenshot({
+        path: 'logs screenshot.png',
+        fullPage: false
+      })
+    }
+    expect(logs.length).toBe(0)
+  })
+
+  test('does not have errors', () => {
+    expect(erros.length).toBe(0)
+  })
+
+  test.only('fails to fetch starwars content', async () => {
+    const h3 = await page.$eval('[data-testid="starWars"]', e => e.innerHTML);
+    expect(h3).toBe('Something went wrong')
+  })
+
 });
